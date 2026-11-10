@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Sequence, Tuple, Union
 
 from .parser import Event
 
@@ -141,6 +142,25 @@ def detect(
 
     alerts.sort(key=lambda a: (SEVERITY_ORDER[a.severity], -a.failures, a.ip))
     return alerts
+
+
+Network = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+
+
+def exclude_ips(events: Iterable[Event], networks: Sequence[Network]) -> List[Event]:
+    """Drop events from trusted addresses, such as your office IP or a monitoring host."""
+    if not networks:
+        return list(events)
+    kept: List[Event] = []
+    for event in events:
+        try:
+            address = ipaddress.ip_address(event.ip)
+        except ValueError:
+            kept.append(event)  # not a parseable address: keep it rather than hide it
+            continue
+        if not any(net.version == address.version and address in net for net in networks):
+            kept.append(event)
+    return kept
 
 
 def summarize(events: Iterable[Event]) -> Dict[str, object]:

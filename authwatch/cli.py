@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from datetime import datetime
 from typing import List, Optional
 
 from . import __version__
-from .detector import Alert, detect, summarize
+from .detector import Alert, detect, exclude_ips, summarize
 from .parser import parse_lines
 
 
@@ -23,7 +24,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--window", type=int, default=300, help="burst window in seconds (default 300)")
     parser.add_argument("--spray-users", type=int, default=5, help="distinct usernames that count as a spray (default 5)")
     parser.add_argument("--year", type=int, default=datetime.now().year, help="year of the log (syslog has none; default: current year)")
-    parser.add_argument("--json", action="store_true", help="print results as JSON")
+    parser.add_argument(
+        "--ignore-ip",
+        action="append",
+        default=[],
+        metavar="IP_OR_CIDR",
+        help="skip a trusted address or network, e.g. 10.0.0.0/8 (repeatable)",
+    )
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="print results as JSON")
+    output.add_argument("--ips-only", action="store_true", help="print only the flagged IPs, one per line (ban-list friendly)")
     parser.add_argument("--fail-on-alert", action="store_true", help="exit with status 1 if any alert is found")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
@@ -52,6 +62,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
 
     try:
+        networks = [ipaddress.ip_network(value, strict=False) for value in args.ignore_ip]
+    except ValueError as err:
+        print(f"error: invalid --ignore-ip value: {err}", file=sys.stderr)
+        return 2
+
+    try:
         if args.logfile == "-":
             events = list(parse_lines(sys.stdin, args.year))
         else:
@@ -61,19 +77,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"error: cannot read log: {err}", file=sys.stderr)
         return 2
 
+    events = exclude_ips(events, networks)
+
     try:
         alerts = detect(events, args.threshold, args.window, args.spray_users)
     except ValueError as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
 
-    summary = summarize(events)
-    if args.json:
-        payload = dict(summary)
+    if args.ips_only:
+        for alert in alerts:
+            print(alert.ip)
+    elif args.json:
+        payload = dict(summarize(events))
         payload["alerts"] = [a.to_dict() for a in alerts]
         print(json.dumps(payload, indent=2))
     else:
-        _print_text(summary, alerts)
+        _print_text(summarize(events), alerts)
 
     return 1 if (alerts and args.fail_on_alert) else 0
 

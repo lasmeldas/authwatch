@@ -1,59 +1,68 @@
-# authwatch
+<p align="center">
+  <img src="docs/banner.svg" alt="authwatch: detect SSH brute-force attacks in your auth logs" width="100%">
+</p>
 
-[![CI](https://github.com/lasmeldas/authwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/lasmeldas/authwatch/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+<p align="center">
+  <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
+  <a href="#usage">Usage</a> &nbsp;·&nbsp;
+  <a href="#detection-rules">Detection rules</a> &nbsp;·&nbsp;
+  <a href="#options">Options</a> &nbsp;·&nbsp;
+  <a href="#if-you-find-an-attacker">If you find an attacker</a>
+</p>
 
-A small blue-team tool that reads your OpenSSH auth log and tells you who is attacking your server, and whether any attacker got in. It's meant for servers you own or administer.
+<p align="center">
+  <a href="https://github.com/lasmeldas/authwatch/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lasmeldas/authwatch/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white">
+  <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-brightgreen">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+</p>
+
+<p align="center"><b>See who is attacking your SSH server, and whether anyone got in.</b></p>
+
+<p align="center">
+  <img src="docs/demo.svg" alt="Terminal demo: authwatch reports one critical, one high and one medium alert from a sample log, then lists the offending IPs" width="90%">
+</p>
+
+`authwatch` reads an OpenSSH auth log and turns thousands of noisy lines into a short list of what matters: who is brute-forcing you, who is slowly guessing usernames, and, most importantly, whether a login **succeeded** right after a burst of failures. It's a quick-triage tool for servers you own or administer.
 
 ## Features
 
 - **Brute-force detection:** many failed logins from one IP within a sliding time window.
-- **Success-after-failures alerts:** flags the most dangerous case, where a login succeeded right after a burst of failures from the same IP, as *critical*.
+- **Success-after-failures alerts:** flags the most dangerous case, a successful login right after a burst of failures from the same address, as *critical*.
 - **Slow username-spray detection:** catches attackers who try many usernames slowly enough to stay under the burst threshold.
-- **Plain output or JSON**, plus `--fail-on-alert` so it can gate scripts and CI jobs.
-- **Zero dependencies**, with tests and CI on Python 3.9, 3.11 and 3.13.
+- **Trusted addresses:** `--ignore-ip` skips your own IPs or whole networks (CIDR), so you don't alert on yourself.
+- **Ban-list output:** `--ips-only` prints just the offending IPs, one per line.
+- **Script-friendly:** `--json` output and `--fail-on-alert` for cron jobs and CI.
+- **No dependencies.** Tested on Python 3.9, 3.11 and 3.13 in CI.
 
-## Install
+## Quick start
 
 ```bash
 git clone https://github.com/lasmeldas/authwatch.git
 cd authwatch
 pip install -e .
+authwatch samples/auth.log --year 2026
 ```
+
+The included sample uses reserved documentation IP addresses (RFC 5737), so nothing in it is real.
 
 ## Usage
 
 ```bash
-authwatch /var/log/auth.log            # Debian/Ubuntu (may need sudo to read)
-authwatch /var/log/secure              # RHEL/Fedora
-journalctl -u ssh --no-pager | authwatch -   # read from stdin
-authwatch auth.log --json              # machine-readable
-authwatch auth.log --fail-on-alert     # exit status 1 if anything is flagged
+authwatch /var/log/auth.log                       # Debian/Ubuntu (may need sudo to read)
+authwatch /var/log/secure                         # RHEL/Fedora
+journalctl -u ssh --no-pager | authwatch -        # read from stdin
+authwatch auth.log --ignore-ip 10.0.0.0/8 --ignore-ip 203.0.113.7
+authwatch auth.log --json                         # machine-readable
+authwatch auth.log --ips-only                     # one flagged IP per line
+authwatch auth.log --fail-on-alert                # exit status 1 if anything is flagged
 ```
 
-Try it on the included sample log:
+**Run it from cron and get told when something is found:**
 
-```console
-$ authwatch samples/auth.log --year 2026
-Parsed 25 login events: 22 failed, 3 accepted, from 5 IP addresses.
-Most targeted usernames: root (7), admin (2), ubuntu (2), guest (2), alice (2)
-
-3 alert(s):
-
-[CRITICAL] success_after_failures from 203.0.113.45
-    Login as 'ubuntu' succeeded after 7 failures within 300s. Treat the account as possibly compromised.
-    Nov 08 03:12:01 -> Nov 08 03:12:19 | usernames: admin, oracle, root, test, ubuntu
-[HIGH] brute_force from 198.51.100.23
-    8 failed logins within 300s.
-    Nov 08 14:20:01 -> Nov 08 14:20:40 | usernames: admin, guest, postgres, root
-[MEDIUM] username_spray from 198.51.100.99
-    5 failed logins spread over 5 different usernames (slow spray, stays under the burst threshold).
-    Nov 08 09:00:12 -> Nov 08 09:40:02 | usernames: ftpuser, git, guest, jenkins, nagios
+```bash
+0 * * * * authwatch /var/log/auth.log --ignore-ip 203.0.113.7 --fail-on-alert >/tmp/authwatch.txt || mail -s "SSH alert" you@example.com < /tmp/authwatch.txt
 ```
-
-The sample uses reserved documentation IP addresses (RFC 5737), so nothing in it is real.
 
 ## Detection rules
 
@@ -73,19 +82,32 @@ Each IP produces at most one alert, using the most serious rule that matches.
 | `--threshold` | 5 | failures that count as a burst |
 | `--window` | 300 | burst window in seconds |
 | `--spray-users` | 5 | distinct usernames that count as a spray |
+| `--ignore-ip` | none | trusted IP or CIDR network to skip (repeatable) |
 | `--year` | current year | syslog timestamps have no year, so set this for older logs |
 | `--json` | off | print JSON instead of text |
+| `--ips-only` | off | print only the flagged IPs, one per line |
 | `--fail-on-alert` | off | exit with status 1 if any alert is found |
 
 ## If you find an attacker
 
-authwatch only reports; it never blocks anything. Common next steps are to disable password logins and use SSH keys only, set `PermitRootLogin no`, run [fail2ban](https://github.com/fail2ban/fail2ban) to ban offenders automatically, and rotate credentials for any account in a *critical* alert.
+authwatch only reports; it never blocks anything. Typical next steps:
+
+- Disable password logins and use SSH keys only, and set `PermitRootLogin no`.
+- Run [fail2ban](https://github.com/fail2ban/fail2ban) to ban offenders automatically.
+- Rotate the credentials of any account named in a **critical** alert, and check it for signs of compromise.
+- If you feed `--ips-only` into a firewall, review the list first and always pass your own addresses with `--ignore-ip`, so you can't lock yourself out.
 
 ## Limitations
 
 - Understands OpenSSH `sshd` messages in the classic syslog format only.
 - Works per source IP, so a distributed attack from many IPs may stay under the thresholds.
-- Treat it as a quick triage tool, not a full intrusion detection system.
+- A quick triage tool, not a full intrusion detection system.
+
+## Roadmap
+
+- ISO-8601 timestamp support (journald `--output=short-iso`)
+- GeoIP and reverse-DNS hints for flagged addresses
+- A watch mode that follows a log file as it grows
 
 ## Development
 
@@ -93,6 +115,8 @@ authwatch only reports; it never blocks anything. Common next steps are to disab
 pip install -e . pytest
 pytest -q
 ```
+
+Issues and pull requests are welcome.
 
 ## License
 
