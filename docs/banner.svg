@@ -21,4 +21,5 @@
   <text class="label" x="80" y="104">// blue team · python</text>
   <text class="title" x="80" y="196">authwatch</text>
   <text class="tag" x="82" y="246">Detect SSH brute-force attacks in your auth logs</text>
+  <text class="label" x="80" y="292" style="font-size:16px;fill:#94a3b8">built by beamlak</text>
 </svg>

@@ -9,7 +9,7 @@ description = "Detect SSH brute-force attacks in auth logs"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "lasmeldas" }]
+authors = [{ name = "Beamlak (lasmeldas)" }]
 keywords = ["security", "ssh", "brute-force", "log-analysis", "blue-team"]
 
 [project.scripts]

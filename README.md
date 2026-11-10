@@ -17,6 +17,8 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
 </p>
 
+<p align="center">Built by <a href="https://github.com/lasmeldas"><b>Beamlak</b></a></p>
+
 <p align="center"><b>See who is attacking your SSH server, and whether anyone got in.</b></p>
 
 <p align="center">
@@ -121,3 +123,7 @@ Issues and pull requests are welcome.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">Built by <a href="https://github.com/lasmeldas"><b>Beamlak</b></a> &middot; <a href="https://github.com/lasmeldas">github.com/lasmeldas</a></p>
